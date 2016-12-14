@@ -201,18 +201,27 @@ class PyLQR_iLQRSolver:
             Quu = lqr_sys['dlduu'][t] + lqr_sys['dfdu'][t].T.dot(Vxx).dot(lqr_sys['dfdu'][t])
 
             #use regularized inverse for numerical stability
-            inv_Quu = self.regularized_persudo_inverse_(Quu, reg=self.reg)
-
+            #inv_Quu = self.regularized_persudo_inverse_(Quu, reg=self.reg)
+            inv_Quu = np.linalg.pinv(Quu)
             #get k and K
             fdfwd[t] = -inv_Quu.dot(Qu)
             fdbck_gain[t] = -inv_Quu.dot(Qux)
-	    CovQuu[t] = -inv_Quu
+	    #CovQuu[t] = self.nearPSD(-inv_Quu) #approximate to nearest PSD
+            CovQuu[t] = inv_Quu
 
             #update value function for the previous time step
             Vxx = Qxx - fdbck_gain[t].T.dot(Quu).dot(fdbck_gain[t])
             Vx = Qx - fdbck_gain[t].T.dot(Quu).dot(fdfwd[t])
 
         return fdfwd, fdbck_gain, CovQuu
+
+    
+    def nearPSD(self, mat):
+        u, s, v = np.linalg.svd(mat)
+        s[ s < 0 ] = 0.0        #truncate negative values...
+	diag_s = np.zeros((v.shape[0], u.shape[1]))
+        diag_s[0:len(s), 0:len(s)] = np.diag(1./(s+reg))                
+	return u.dot(diag_s).dot(v.T)
 
     def build_lqr_system(self, x_array, u_array):
         dfdx_array = []
@@ -349,8 +358,8 @@ class PyLQR_iLQRSolver:
         """
         u, s, v = np.linalg.svd(mat)
         s[ s < 0 ] = 0.0        #truncate negative values...
-        diag_s_inv = np.zeros((v.shape[0], u.shape[1]))
-        diag_s_inv[0:len(s), 0:len(s)] = np.diag(1./(s+reg))
+	diag_s_inv = np.zeros((v.shape[0], u.shape[1]))
+        diag_s_inv[0:len(s), 0:len(s)] = np.diag(1./(s-reg))
         return v.dot(diag_s_inv).dot(u.T)
 
     def finite_difference_second_order_(self, func, x):

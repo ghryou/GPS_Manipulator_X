@@ -95,7 +95,7 @@ class Manipulator_X():
 		return x_position	
 
 	def instaneous_cost(self, x, u, t, aux):
-		if t < self.T:
+		if t < self.T - 1:
 			return u.dot(u)*self.weight_u
 		else:
 			temp_dest = PyKDL.Frame()
@@ -109,9 +109,11 @@ class Manipulator_X():
 	
 	def solve_ilqr_problem(self):
 		u_init = []
-		sum = self.q_init
-		delta = (self.JntToNp(self.q_out)-self.q_init)/self.T
-		print delta
+		#sum = self.q_init
+		sum = np.zeros(self.nj)
+		#delta = (self.JntToNp(self.q_out)-self.q_init)/self.T
+		delta = (self.JntToNp(self.q_out)-np.zeros(self.nj))/self.T
+		print "delta",delta
 		for t in range(self.T):
 			temp = np.zeros(self.nj)
 			param = rd.random()+0.5
@@ -122,7 +124,8 @@ class Manipulator_X():
 				else:
 					temp[i] = self.q_out[i] - sum[i]
 			u_init.append(temp)
-		x_init = self.q_init
+		#x_init = self.q_init
+		x_init = np.zeros(self.nj)
 		if self.ilqr_solver is not None:
 			self.res = self.ilqr_solver.ilqr_iterate(x_init,u_init,n_itrs=150, tol=1e-6)
 		return
