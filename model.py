@@ -137,7 +137,7 @@ class Manipulator_X():
 			ax_cost = fig.add_subplot(121)
 			n_itrs = len(self.res['J_hist'])
 			ax_cost.plot(np.arange(n_itrs), self.res['J_hist'], 'r', linewidth=3.5)
-			f = open("ilqr_result.txt",'a')
+			f = open("log/ilqr_result.txt",'a')
 			f.write("ilqr_result\n")
 			for i in np.arange(n_itrs):
 				f.write(str(self.res['J_hist'][i]))

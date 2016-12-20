@@ -240,7 +240,7 @@ if __name__ == '__main__':
         
         ros_agent = ROS_connection()	
         
-	save_result = open("gps_result.txt",'a')
+	save_result = open("log/gps_result.txt",'a')
 	save_result.write("GPS_start\n")
 
 	#####FOR TEST######
