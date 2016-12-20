@@ -84,17 +84,15 @@ if __name__ == '__main__':
 
 	N_sample = 1000  #number of total sample
 	N_sample_max = 100
-	N_sample_init = 5 #number of sample from each ddp solution
-	N_ddp_sol = 16  #number of ddp solution
+	N_sample_init = 10 #number of sample from each ddp solution
+	N_ddp_sol = 8  #number of ddp solution
 	N_max_sol = 100
         flag_end_sol = 0
 	flag_end_sample = 0 #last index of sample
 	flag_rand = 0 #randomly pict sample
 
-	sample_policy = [None]*N_max_sol
-	#sample_trajectory = [None]*N_sample
-	#sample_control = [None]*N_sample
-        sample_dict = [None]*N_sample
+	sample_policy = [None]*N_max_sol    #set of solution ddp & nn
+	sample_dict = [None]*N_sample	#set of samples from each solution
 
 	print "test 1 ",model.q_init
 
@@ -111,7 +109,6 @@ if __name__ == '__main__':
 		for j in range(N_sample_init):
 			trajectory_temp = []
 			control_temp = []
-                        pb_temp = []
                         c_pb_temp = []
                         cost_temp = []
 			trj = np.zeros(model.nj)
@@ -121,20 +118,16 @@ if __name__ == '__main__':
 			Cov = sample_policy[i]['Q_array_opt']
 			for t in range(model.T):
                                 next_policy = np.random.multivariate_normal(u_i[t]+K_i[t].dot(trj-x_i[t]),Cov[t])
-                                pb_temp.append(mul_normal.pdf(next_policy, u_i[t]+K_i[t].dot(trj-x_i[t]),Cov[t]))
-                                if len(c_pb_temp) == 0:
-                                        c_pb_temp.append(pb_temp[0])
-                                else:
-                                        c_pb_temp.append(c_pb_temp[-1]*pb_temp[-1])
+				c_pb_temp.append(1.0)
 				trajectory_temp.append(trj)
 				control_temp.append(next_policy)
+				cost_temp.append(model.instaneous_cost(trj,next_policy,t,0))
 				trj += next_policy #dynamics
-                                cost_temp.append(model.instaneous_cost(trj,next_policy,t,0))
-
+                                
 			sample_temp = {
                         'trajectory':trajectory_temp,
                         'control':control_temp,
-                        'pb':pb_temp,
+                        #'pb':pb_temp,
                         'c_pb':c_pb_temp,
                         'cost':cost_temp,
                         'index':flag_end_sol
@@ -144,8 +137,29 @@ if __name__ == '__main__':
 
 
 	#line 3 Initialize theta
+	#calculate importance probability
+	for i in range(flag_end_sample):
+                c_pb_temp = []
+		trj = sample_dict[i]['trajectory']
+		next_policy = sample_dict[i]['control']
+		for t in range(model.T):
+                        pb_temp = 0
+			for j in range(flag_end_sol):
+				x_i = sample_policy[j]['x_array_opt']
+				u_i = sample_policy[j]['u_array_opt'] 
+				K_i = sample_policy[j]['K_array_opt']
+				Cov = sample_policy[j]['Q_array_opt']
+				pb_temp += mul_normal.pdf(next_policy[t], u_i[t]+K_i[t].dot(trj[t]-x_i[t]),Cov[t])
+			pb_temp /= flag_end_sol
+			if len(c_pb_temp) == 0:
+        	                c_pb_temp.append(pb_temp)
+                        else:
+                                c_pb_temp.append(c_pb_temp[-1]*pb_temp)
+		sample_dict[i]['c_pb'] = c_pb_temp
+
+	#train parameter theta
         print "process 2 Initialize parameter"
-	N_hidden_node = 20
+	N_hidden_node = 50
 	x_temp = tf.placeholder("float",[None, model.nj])
 
 	W1 = tf.Variable(tf.random_uniform([model.nj, N_hidden_node], -0.1, 0.1), name="W1")
@@ -178,8 +192,11 @@ if __name__ == '__main__':
 			x.append(sample_dict[i]['trajectory'][t])
 			y.append(sample_dict[i]['control'][t])
 	sess.run(train, feed_dict={x_temp:x, y_temp:y})
-	#print sess.run(W2)
-	#print sess.run(b2)
+	print sess.run(W2)
+	print sess.run(b2)
+
+        flag_end_sol += 1
+
 
 	#line 4 Build initial sample set S
         print "process 3 Build initial sample set"
@@ -193,29 +210,29 @@ if __name__ == '__main__':
 
 	for j in range(N_sample_init):
 		trajectory_temp = []
-        	control_temp = []
-                i_rate_temp = []
-                c_i_rate_temp = []
+		control_temp = []
+                c_pb_temp = []
                 cost_temp = []
 		trj = [np.zeros(model.nj)]
 		for i in range(model.T):
 			next_policy_mean = sess.run(y_eval, feed_dict={x_eval:trj})
 			next_policy = np.random.multivariate_normal(next_policy_mean[0],np.eye(model.nj))
+			"""
                         pb_temp.append(mul_normal.pdf(next_policy, next_policy_mean[0],np.eye(model.nj)))
                         if len(c_pb_temp) == 0:
                                 c_pb_temp.append(pb_temp[0])
                         else:
                                 c_pb_temp.append(c_pb_temp[-1]*pb_temp[-1])
-                        trj[0] += next_policy #dynamics
-                        
+			"""
+			c_pb_temp.append(1.0)
         		trajectory_temp.append(trj[0])
 			control_temp.append(next_policy)
 			cost_temp.append(model.instaneous_cost(trj[0],next_policy,i,0))
+                        trj[0] += next_policy
 
 		sample_temp = {
                 'trajectory':trajectory_temp,
                 'control':control_temp,
-                'pb':pb_temp,
                 'c_pb':c_pb_temp,
                 'cost':cost_temp,
                 'index':flag_end_sol
@@ -223,8 +240,6 @@ if __name__ == '__main__':
                 sample_dict[flag_end_sample] = sample_temp
                 flag_end_sample += 1
        
-        flag_end_sol += 1
-
 	print ('process 4 Initialize finished')
 
 	print "test 3 ", model.q_init
@@ -249,7 +264,7 @@ if __name__ == '__main__':
         trj = [np.zeros(model.nj)]
         cost_final = 0
         cost_temp = []
-	for i in range(3):
+	for i in range(model.T):
                 print "GPS test ",i
                 next_policy = sess.run(y_eval, feed_dict={x_eval:trj})
                 trj[0] += next_policy[0]
@@ -257,8 +272,8 @@ if __name__ == '__main__':
 		for j in range(model.nj):
 			trj[0][j] = trj_temp[j]
 		cost_final += model.instaneous_cost(trj[0],next_policy[0],i,0)
-		cost_temp.append(cost_final)       
-	for i in range(10):
+		cost_temp.append(cost_final)
+	for i in range(5):
 		ros_agent.move_arm_once(np.zeros(model.nj))
 
 	for k in range(K):
@@ -280,7 +295,7 @@ if __name__ == '__main__':
 			for t in range(model.T):
 				ss_x.append(sample_dict[i]['trajectory'][t])
 				ss_y.append(sample_dict[i]['control'][t])
-
+			
 		ss_dist = tf.contrib.distributions.MultivariateNormalDiag(mu=y_node,diag_stdev=np.ones(model.nj).astype(np.float32))
 		ss_imp_serial = sess.run(ss_dist.pdf(y_temp), feed_dict={x_temp:ss_x, y_temp:ss_y})
 		ss_imp = []
@@ -291,7 +306,7 @@ if __name__ == '__main__':
 				ss_pb *= ss_imp_serial[i*model.T+t]
 				ss_temp += ss_pb
 			ss_imp.append(ss_temp)
-	
+
 		flag_end_sample_gps = min(flag_end_sample, N_sample_max)
 		if flag_end_sample > N_sample_max and flag_rand == 0:		
 			ss_imp_temp = ss_imp
@@ -308,14 +323,56 @@ if __name__ == '__main__':
 			for i in range(flag_end_sample):
 				gps_sample_dict.append(sample_dict[i])
 
+
 		#line 7 Optimize theta
+		#calculate importance probability
+		ss_x = []
+		ss_y = []
+		for i in range(flag_end_sample_gps):
+			for t in range(model.T):
+				ss_x.append(gps_sample_dict[i]['trajectory'][t])
+				ss_y.append(gps_sample_dict[i]['control'][t])
+		ss_dist = tf.contrib.distributions.MultivariateNormalDiag(mu=y_node,diag_stdev=np.ones(model.nj).astype(np.float32))
+		ss_imp_serial = sess.run(ss_dist.pdf(y_temp), feed_dict={x_temp:ss_x, y_temp:ss_y})
+		ss_imp = []
+		for i in range(flag_end_sample_gps):
+			ss_temp = 0
+			ss_pb = 1
+			for t in range(model.T):
+				ss_pb *= ss_imp_serial[i*model.T+t]
+				ss_temp += ss_pb
+				ss_imp.append(ss_temp)
+		
+		for i in range(flag_end_sample_gps):
+	                c_pb_temp = []
+			trj = gps_sample_dict[i]['trajectory']
+			next_policy = gps_sample_dict[i]['control']
+			for t in range(model.T):
+	                        pb_temp = 0
+				for j in range(flag_end_sol-1):
+					x_i = sample_policy[j]['x_array_opt']
+					u_i = sample_policy[j]['u_array_opt'] 
+					K_i = sample_policy[j]['K_array_opt']
+					Cov = sample_policy[j]['Q_array_opt']
+					pb_temp += mul_normal.pdf(next_policy[t], u_i[t]+K_i[t].dot(trj[t]-x_i[t]),Cov[t])
+				pb_temp += ss_imp[i*model.T+t]
+				pb_temp /= flag_end_sol
+				if len(c_pb_temp) == 0:
+	        	                c_pb_temp.append(pb_temp)
+	                        else:
+	                                c_pb_temp.append(c_pb_temp[-1]*pb_temp)
+			sample_dict[i]['c_pb'] = c_pb_temp
+
+		#optimize parameter theta
                 print "Optimize parameter"
 
-                z_t = np.zeros(model.T)
+                #z_t = np.zeros(model.T)
                 i_rate_temp = np.ones(flag_end_sample)
                 i_rate_sel = np.zeros(flag_end_sol)
 
-		opt = tf.train.GradientDescentOptimizer(0.01)
+		opt = tf.train.GradientDescentOptimizer(0.5)
+
+		#calculate gradient
 		"""
 		print "Compute gradients of policy"
                 #v, g = opt.compute_gradients(y_node_new, [W1_new, W2_new])
@@ -332,7 +389,7 @@ if __name__ == '__main__':
 			for j in range(flag_end_sample):
 				z_t += i_temp[i*flag_end_sample+j]/sample_dict[j]['c_pb'][i]
 				exp_temp += i_temp[i*flag_end_sample+j]/sample_dict[j]['c_pb'][i]*sample_dict[j]['cost'][i]
-			z.append(z_t)				
+			z.append(z_t)		
         	        J.append(exp_temp/z_t + w_reg*tf.log(z_t))
 
 		print "Compute gradients of loss function"
@@ -373,12 +430,16 @@ if __name__ == '__main__':
 				x.append(gps_sample_dict[i]['trajectory'][t])
 				y.append(gps_sample_dict[i]['control'][t])
 		#method 1
-		#W1_new = W1
-		#W2_new = W2
+		print "Pre-training method 1"
+		W1_new = W1
+		b1_new = b1
+		W2_new = W2
+		b2_new = b2
 		#method 2
-		print "Pre-training"
-		pre_train = tf.train.GradientDescentOptimizer(0.5).minimize(tf.reduce_mean(tf.square(y_temp-y_node_new)))
-		sess.run(pre_train, feed_dict={x_temp:x, y_temp:y})
+		#print "Pre-training method 2"
+		#pre_train = tf.train.GradientDescentOptimizer(0.5).minimize(tf.reduce_mean(tf.square(y_temp-y_node_new)))
+		#sess.run(pre_train, feed_dict={x_temp:x, y_temp:y})
+
 		print "Start training"
 		sess.run(train, feed_dict={x_temp:x, y_temp:y})
 		print sess.run(W1_new)
@@ -388,39 +449,33 @@ if __name__ == '__main__':
                 #line 8 Append samples to current sample set S
                 print "Append new samples"
                 for j in range(N_sample_init):
-		        trajectory_temp = []
-                	control_temp = []
-                        i_rate_temp = []
-                        c_i_rate_temp = []
+			trajectory_temp = []
+			control_temp = []
+                        c_pb_temp = []
                         cost_temp = []
         		trj = [np.zeros(model.nj)]
         		#print "init ", trj
         		for i in range(model.T):
         			next_policy_mean = sess.run(y_eval, feed_dict={x_eval:trj})
         			next_policy = np.random.multivariate_normal(next_policy_mean[0],np.eye(model.nj))
-                                pb_temp.append(mul_normal.pdf(next_policy, next_policy_mean[0],np.eye(model.nj)))
-                                if len(c_pb_temp) == 0:
-                                        c_pb_temp.append(pb_temp[0])
-                                else:
-                                        c_pb_temp.append(c_pb_temp[-1]*pb_temp[-1])
-                                trj[0] += next_policy #dynamics
+				c_pb_temp.append(1.0)
                         
                 		trajectory_temp.append(trj[0])
         			control_temp.append(next_policy)
         			cost_temp.append(model.instaneous_cost(trj[0],next_policy,i,0))
+				trj[0] += next_policy #dynamics
+
         			#print "time ", i, "result", trj[0]
         
         		sample_temp = {
                         'trajectory':trajectory_temp,
                         'control':control_temp,
-                        'pb':pb_temp,
                         'c_pb':c_pb_temp,
                         'cost':cost_temp,
                         'index':flag_end_sol
                         }
                         sample_dict[flag_end_sample] = sample_temp
                         flag_end_sample += 1
-                flag_end_sol += 1
 
 
                 #line 10 Estimate the costs of prev and next parameters

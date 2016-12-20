@@ -99,9 +99,9 @@ class Manipulator_X():
 			return u.dot(u)*self.weight_u
 		else:
 			temp_dest = PyKDL.Frame()
-			self.fksolver.JntToCart(self.NpToJnt(x), temp_dest)
+			self.fksolver.JntToCart(self.NpToJnt(x+u), temp_dest)
 			x_position = temp_dest.p
-			return PyKDL.dot(self.fin_position-x_position, self.fin_position-x_position)*self.weight_x + np.dot(u,u)*self.weight_u
+			return PyKDL.dot(self.fin_position-x_position, self.fin_position-x_position)*self.weight_x + u.dot(u)*self.weight_u
 
 	def build_ilqr_problem(self):
 		self.ilqr_solver = PyLQR_iLQRSolver(T=self.T, plant_dyn=self.plant_dyn, cost=self.instaneous_cost)
