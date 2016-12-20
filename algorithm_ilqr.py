@@ -36,7 +36,7 @@ class ROS_connection():
 		self.q_init[4] = data.position[6]
 		self.q_init[5] = data.position[7]
 		self.q_init[6] = data.position[8]	
-		#self.sub_once.unregister()
+		self.sub_once.unregister()
 		print "callback"		
 		print(self.q_init)
 		return
@@ -51,11 +51,10 @@ class ROS_connection():
 		return
 
 if __name__ == '__main__':
-	model = Manipulator_X(T=20,weight=[1.0,5.0])
+	model = Manipulator_X(T=10,weight=[1.0,5.0])
 	model.build_ilqr_problem()
 	model.solve_ilqr_problem()
 	trajectory = model.res['x_array_opt']
-	#model.plot_ilqr_result()
 	
 	print ('iLQR done')
 
@@ -68,4 +67,5 @@ if __name__ == '__main__':
 	print model.getPosition(trajectory[-1])
 	print model.res['J_hist'][-1]
 
-
+	model.plot_ilqr_result()
+	

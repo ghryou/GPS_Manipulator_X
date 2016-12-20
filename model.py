@@ -64,8 +64,8 @@ class Manipulator_X():
 			jointpositions[0] = 0.3
 			jointpositions[1] = -0.5
 			jointpositions[3] = -0.6
-			jointpositions[5] = -0.4
-			jointpositions[6] = -0.2
+			jointpositions[5] = -0.5
+			jointpositions[6] = -0.8
         		kinematics_status = self.fksolver.JntToCart(jointpositions, dest)
 
 			ret = self.iksolverpos.CartToJnt(self.NpToJnt(self.q_init), dest, self.NpToJnt(self.q_out))
@@ -137,6 +137,12 @@ class Manipulator_X():
 			ax_cost = fig.add_subplot(121)
 			n_itrs = len(self.res['J_hist'])
 			ax_cost.plot(np.arange(n_itrs), self.res['J_hist'], 'r', linewidth=3.5)
+			f = open("ilqr_result.txt",'a')
+			f.write("ilqr_result\n")
+			for i in np.arange(n_itrs):
+				f.write(str(self.res['J_hist'][i]))
+				f.write("\n")
+			f.close()
 			ax_cost.set_xlabel('Number of Iterations', fontsize=20)
 			ax_cost.set_ylabel('Trajectory Cost')
 
